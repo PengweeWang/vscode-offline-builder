@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# 逐个安装扩展（适合所有架构，避免批量安装被取消）
-# 用法: install-extensions.sh [list-file]
+# Install extensions one by one. Works on all architectures and avoids
+# the "Canceled" issue seen when batching --install-extension flags.
+# Usage: install-extensions.sh [list-file]
 set -uo pipefail
 
 LIST="${1:-$(cd "$(dirname "$0")/.." && pwd)/extensions.txt}"

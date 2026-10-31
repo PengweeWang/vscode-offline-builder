@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# 构建指定架构的 VS Code Server + 扩展离线包
-# 用法: build.sh <arch> <server-artifact> <cli-artifact> <commit>
-# 环境变量: VSCODE_VERSION
+# Build an offline VS Code Server + extensions bundle for one architecture.
+# Usage: build.sh <arch> <server-artifact> <cli-artifact> <commit>
+# Env:   VSCODE_VERSION
 set -euo pipefail
 
 ARCH="${1:?arch: x64|arm64}"

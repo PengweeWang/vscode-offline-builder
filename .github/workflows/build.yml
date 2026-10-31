@@ -97,7 +97,7 @@ jobs:
               || true
           fi
 
-          # 另一个矩阵任务可能正在创建 release，等待它可见
+          # The other matrix job may be creating the release; wait until it is visible.
           for i in $(seq 1 20); do
             if gh release view "$TAG" >/dev/null 2>&1; then break; fi
             sleep 3
