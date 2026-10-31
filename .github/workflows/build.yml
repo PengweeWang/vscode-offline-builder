@@ -1,0 +1,121 @@
+name: Build VS Code Server Offline Bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "VS Code version"
+        required: true
+        default: "1.144.0"
+      commit:
+        description: "VS Code commit hash"
+        required: true
+        default: "2c33b50b16c472efe58357d1d2a8a5414bc23fbf"
+      create_release:
+        description: "Upload bundles to GitHub Release"
+        type: boolean
+        default: true
+      upload_artifact:
+        description: "Also upload as Actions artifact (uses storage quota)"
+        type: boolean
+        default: false
+  push:
+    paths:
+      - "extensions.txt"
+      - "scripts/**"
+      - ".github/workflows/build.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vscode-offline-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  VSCODE_VERSION: ${{ inputs.version || '1.144.0' }}
+  VSCODE_COMMIT: ${{ inputs.commit || '2c33b50b16c472efe58357d1d2a8a5414bc23fbf' }}
+
+jobs:
+  build:
+    name: ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-22.04
+            server: server-linux-x64
+            cli: cli-alpine-x64
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+            server: server-linux-arm64
+            cli: cli-alpine-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show target
+        run: |
+          echo "version=$VSCODE_VERSION commit=$VSCODE_COMMIT arch=${{ matrix.arch }}"
+          uname -m
+
+      - name: Build bundle
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/build.sh \
+            "${{ matrix.arch }}" \
+            "${{ matrix.server }}" \
+            "${{ matrix.cli }}" \
+            "$VSCODE_COMMIT"
+
+      - name: Upload artifact
+        if: ${{ inputs.upload_artifact }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-server-${{ matrix.arch }}-${{ env.VSCODE_VERSION }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          compression-level: 0
+          retention-days: 7
+
+      - name: Publish release asset
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="vscode-server-${VSCODE_VERSION}"
+          TITLE="VS Code Server ${VSCODE_VERSION} offline bundle"
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "$TITLE" \
+              --notes "VS Code Server ${VSCODE_VERSION} (${VSCODE_COMMIT}) with extensions from extensions.txt. Artifacts: linux x64 / arm64." \
+              || true
+          fi
+
+          # 另一个矩阵任务可能正在创建 release，等待它可见
+          for i in $(seq 1 20); do
+            if gh release view "$TAG" >/dev/null 2>&1; then break; fi
+            sleep 3
+          done
+
+          gh release upload "$TAG" dist/* --clobber
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.arch }}"
+            echo ""
+            if [ -f dist/*.sha256 ]; then
+              echo '```'
+              cat dist/*.sha256
+              echo '```'
+            else
+              echo "Build failed or no output."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
